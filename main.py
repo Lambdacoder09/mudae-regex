@@ -1,12 +1,12 @@
-# main.py
 import os
-
 import discord
-from discord.ext import commands
-from discord.ext import tasks
+from discord.ext import commands, tasks
+import logging
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 
-class Client(commands.Bot):
+class MyBot(commands.Bot):
     def __init__(self):
         super().__init__(
             command_prefix="!",
@@ -14,27 +14,34 @@ class Client(commands.Bot):
             help_command=commands.DefaultHelpCommand(dm_help=True)
         )
 
-    async def setup_hook(self):  # overwriting a handler
-        print(f"\033[31mLogged in as {client.user}\033[39m")
-        cogs_folder = f"{os.path.abspath(os.path.dirname(__file__))}/cogs"
+    async def on_ready(self):
+        logging.info(f"Logged in as {self.user}")
+        await self.load_extensions()
+
+    async def load_extensions(self):
+        cogs_folder = os.path.join(os.path.abspath(os.path.dirname(__file__)), "cogs")
         for filename in os.listdir(cogs_folder):
             if filename.endswith(".py"):
-                await client.load_extension(f"cogs.{filename[:-3]}")
-        print("Loaded cogs")
-        # start the task to run in the background
-        self.my_background_task.start()
+                try:
+                    self.load_extension(f"cogs.{filename[:-3]}")
+                    logging.info(f"Loaded cog: {filename[:-3]}")
+                except Exception as e:
+                    logging.error(f"Failed to load cog {filename[:-3]}: {e}")
 
-    @tasks.loop(seconds=60, count=1)  # task runs every 60 seconds
-    async def my_background_task(self):
-        server_count = str(len(self.guilds))
-        activity = discord.Activity(type=discord.ActivityType.watching, name=f" {server_count} servers")
+    @tasks.loop(seconds=60, count=1)
+    async def update_bot_status(self):
+        server_count = len(self.guilds)
+        activity = discord.Activity(type=discord.ActivityType.watching, name=f"{server_count} servers")
         await self.change_presence(activity=activity)
-        self.my_background_task.stop()
+        self.update_bot_status.stop()
 
-    @my_background_task.before_loop
-    async def before_my_task(self):
-        await self.wait_until_ready()  # wait until the bot logs in
+    @update_bot_status.before_loop
+    async def before_update_bot_status(self):
+        await self.wait_until_ready()
 
+def main():
+    bot = MyBot()
+    bot.run(os.getenv("TOKEN"))
 
-client = Client()
-client.run(os.getenv("TOKEN"))
+if __name__ == "__main__":
+    main()
